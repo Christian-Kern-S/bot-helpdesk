@@ -1,0 +1,3 @@
+bot:
+  port: 8086 # Port the Go Server should be listening to
+  secret: "4771ee38ad2802d130ff2852327cc85eba5191997f99d70c4635493c893d5a4e" # Secret (64+ chars recommended)
