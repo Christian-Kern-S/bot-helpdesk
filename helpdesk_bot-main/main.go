@@ -29,9 +29,9 @@ var (
 	userData       = make(map[string]*RequestData1)
 	stateMutex     sync.Mutex
 	config         *viper.Viper
-	errInvalidBody = errors.New("Invalid body supplied")
+	errInvalidBody = errors.New("invalid body supplied")
 	letterBytes    = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	complaintRegex = regexp.MustCompile(`(?i)^(helpdesk)(\h|$)`)
+	complaintRegex = regexp.MustCompile(`(?i)^helpdesk([ \t]|$)`)
 )
 
 type MessageActor struct {
@@ -219,7 +219,7 @@ func HelpdeskHandling(w http.ResponseWriter, r *http.Request) {
 					sendReply(server, message, "❌ Opção inválida! Digite 1 ou 2:")
 					return
 				}
-				userData[userID].IDOper = num - 1 // Ajuste para 0 ou 1
+				userData[userID].IDOper = num
 				userStates[userID] = "awaiting_idgrupo"
 				sendReply(server, message, "🏷️ Digite o número do grupo (1-12):")
 
@@ -258,7 +258,6 @@ func HelpdeskHandling(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				userData[userID].DescProblema = text
-				userStates[userID] = ""
 
 				// Finalizar coleta
 				data := userData[userID]
@@ -267,13 +266,25 @@ func HelpdeskHandling(w http.ResponseWriter, r *http.Request) {
 				data.CPF = data.CPFAB
 				data.IP = getLocalIP()
 
-				// Enviar para API
+				// Enviar para primeira API
 				idHelp := sendFirstRequest(*data)
 				if idHelp == 0 {
-					sendReply(server, message, "❌ Falha ao criar ticket!")
-				} else {
-					sendReply(server, message, fmt.Sprintf("✅ Ticket #%d criado com sucesso!", idHelp))
+					sendReply(server, message, "❌ Falha ao criar helpdesk!")
+					break
 				}
+
+				// Enviar para segunda API
+				data2 := RequestData2{
+					IDHelp: idHelp,
+					CPF:    data.CPFAB,
+					Hist:   data.DescProblema,
+					Status: "A",
+					File:   "",
+				}
+				sendSecondRequest(data2)
+
+				// Feedback final
+				sendReply(server, message, fmt.Sprintf("✅ Helpdesk #%d criado com sucesso!", idHelp))
 
 				// Limpar dados
 				stateMutex.Lock()
@@ -361,73 +372,6 @@ func main() {
 	log.Printf("[Network]       Listening on port %d", config.GetInt("bot.port"))
 	log.Println("[Network]       Starting to listen and serve")
 	log.Fatal(s.ListenAndServe())
-
-	data1 := collectData1()
-
-	idHelp := sendFirstRequest(data1)
-
-	if idHelp == 0 {
-		log.Fatal("Falha ao obter ID Help, abortando...")
-	}
-
-	data2 := collectData2(idHelp, data1.CPFAB, data1.DescProblema)
-	sendSecondRequest(data2)
-}
-
-func collectData1() RequestData1 {
-	var data RequestData1
-
-	data.CPFAB = getInput("Digite o CPF (somente números): ", validateCPF)
-	data.Chapa = getInput("Digite a matrícula: ", validateChapa)
-	data.IDOper = getNumberInput("Digite o tipo de operação (1 para ADM, 2 para Operação): ", validateIDOper)
-	data.IDGrupo = getNumberInput("Digite o número do grupo (1-12): ", validateGroup)
-	data.IDSubgrupo = getNumberInput("Digite o número do subgrupo (1-170): ", validateGroup)
-	data.CabProblema = getInput("Descreva o tópico do problema: ", validateNotEmpty)
-	data.DescProblema = getInput("Descreva o problema em detalhes: ", validateNotEmpty)
-
-	// Valores fixos/automáticos
-	data.SLA = 160
-	data.IDResp = "1"
-	data.CPF = data.CPFAB // CPF igual ao CPF_AB
-	data.IP = getLocalIP()
-
-	return data
-}
-
-func collectData2(idHelp int, cpf string, hist string) RequestData2 {
-
-	return RequestData2{
-
-		IDHelp: idHelp,
-		CPF:    cpf,
-		Hist:   hist,
-		Status: "A",
-		File:   "",
-	}
-}
-
-// Funções auxiliares para validação e entrada de dados
-func getInput(prompt string, validator func(string) error) string {
-	var input string
-	for {
-		fmt.Print(prompt)
-		fmt.Scanln(&input)
-		input = strings.TrimSpace(input)
-		if err := validator(input); err == nil {
-			return input
-		}
-		fmt.Println("Entrada inválida. Tente novamente.")
-	}
-}
-
-func getNumberInput(prompt string, validator func(int) error) int {
-	for {
-		input := getInput(prompt, validateNumber)
-		num, _ := strconv.Atoi(input)
-		if err := validator(num); err == nil {
-			return num
-		}
-	}
 }
 
 // Validações
@@ -445,39 +389,6 @@ func onlyDigits(s string) bool {
 		}
 	}
 	return true
-}
-
-func validateChapa(input string) error {
-	if len(input) < 3 || len(input) > 20 {
-		return fmt.Errorf("Matrícula deve ter entre 3 e 20 caracteres")
-	}
-	return nil
-}
-
-func validateIDOper(num int) error {
-	if num < 0 || num > 1 {
-		return fmt.Errorf("Digite 0 ou 1")
-	}
-	return nil
-}
-
-func validateGroup(num int) error {
-	if num < 1 || num > 170 {
-		return fmt.Errorf("Digite um número entre 1 e 170")
-	}
-	return nil
-}
-
-func validateNotEmpty(input string) error {
-	if len(input) < 5 {
-		return fmt.Errorf("A descrição deve ter pelo menos 5 caracteres")
-	}
-	return nil
-}
-
-func validateNumber(input string) error {
-	_, err := strconv.Atoi(input)
-	return err
 }
 
 // Função para obter o IP local
@@ -502,25 +413,24 @@ func sendFirstRequest(data RequestData1) int {
 	client := &http.Client{Timeout: 15 * time.Second}
 	jsonBody, _ := json.Marshal(data)
 
-	resp, err := client.Post(baseURL+firstEndpoint, "application/json",
-		bytes.NewBuffer(jsonBody))
+	log.Printf("Enviando para %s:\n%s", firstEndpoint, string(jsonBody))
+
+	resp, err := client.Post(baseURL+firstEndpoint, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
-		log.Printf("Erro na primeira requisição: %v", err)
+		log.Printf("Erro na requisição: %v", err)
 		return 0
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
-
-	log.Printf("Enviando para %s:\n%s", firstEndpoint, string(jsonBody))
-
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Status: %d — Resposta: %s", resp.StatusCode, string(body))
+		log.Printf("Status: %d", resp.StatusCode)
 		return 0
 	}
+
+	body, _ := io.ReadAll(resp.Body)
 	var response FirstResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		log.Printf("Erro ao decodificar resposta: %v", err)
+		log.Printf("Erro ao decodificar JSON: %v", err)
 		return 0
 	}
 
