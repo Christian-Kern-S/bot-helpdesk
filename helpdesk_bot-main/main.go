@@ -43,7 +43,7 @@ var subgrupoMap = map[int]map[int]map[int]bool{
 		4:  {76: true, 79: true, 85: true, 87: true, 92: true, 93: true, 101: true, 103: true, 107: true, 114: true, 116: true, 118: true, 124: true, 129: true},
 		5:  {95: true, 97: true, 99: true},
 		7:  {1: true, 57: true, 109: true, 111: true, 122: true, 135: true},
-		8:  {137: true, 138: true, 139: true, 140: true, 141: true},
+		8:  {137: true, 138: true, 139: true, 141: true},
 		9:  {142: true, 143: true, 144: true, 145: true, 146: true, 147: true, 148: true},
 		10: {149: true},
 		11: {150: true, 151: true, 152: true, 153: true, 154: true, 155: true, 156: true},
@@ -265,9 +265,6 @@ func subgrupos(id_oper int, idgrupo int) string {
 	if id_oper == 1 && idgrupo == 2 {
 		return "8- Computador\n9- Impressora\n10- Leitor\n11- Monitor\n12- Teclado / Mouse\n13- Notebook\n14- Scanner\n16- Outros\n56- Catraca\n58- Coletor\n131- Relogio de Ponto"
 	}
-	if id_oper == 1 && idgrupo == 3 {
-		return "83- Corporativo"
-	}
 	if id_oper == 1 && idgrupo == 4 {
 		return "76- Cadastro RCA\n79- Cadastro Usuario\n85- Acesso Rotina / Dados\n87- Instalacao e Manutencao\n92- Erro de Rotina\n93- Cadastro Secao\n101- Banco de Dados\n103- Relatorios\n107- Inativar Usuario\n114- Ecommerce\n116- Duvidas\n118- Acertos\n124- Transferir Venda\n129- Alterar Rotina"
 	}
@@ -278,7 +275,7 @@ func subgrupos(id_oper int, idgrupo int) string {
 		return "1- Internet\n57- Wi-Fi\n109- Compartilhamento\n111- Usuario AD\n122- Falhas\n135- Monitoramento"
 	}
 	if id_oper == 1 && idgrupo == 8 {
-		return "137- Nova Conta\n138- Bloquear Conta\n139- Resetar Senha\n140- Thunderbird\n141- Problemas"
+		return "137- Nova Conta\n138- Bloquear Conta\n139- Resetar Senha\n141- Problemas"
 	}
 	if id_oper == 1 && idgrupo == 9 {
 		return "142- Usuario RM\n143- Acessos RM\n144- RM (Falhas)\n145- Usuario Digte\n146- Acessos Digte\n147- Digte (Falhas)\n148- Duvidas"
@@ -413,10 +410,10 @@ func HelpdeskHandling(w http.ResponseWriter, r *http.Request) {
 					stateMutex.Unlock()
 					break
 				} else if len(text) < 3 {
-					sendReply(server, message, "❌ Matrícula inválida! Mínimo 3 caracteres:")
+					sendReply(server, message, "❌ Matrícula inválida! Mínimo 6 caracteres:")
 					return
 				} else if consultaCpfRequest(userData[userID].CPFAB) != text {
-					sendReply(server, message, "❌ Matrícula inválida! Não corresponde com o cpf informado anteriormente!")
+					sendReply(server, message, "❌ Matrícula inválida! Não corresponde com o cpf informado anteriormente.\nFavor inserir a matricula mais nova!")
 					return
 				}
 				userData[userID].Chapa = text
@@ -438,7 +435,11 @@ func HelpdeskHandling(w http.ResponseWriter, r *http.Request) {
 				}
 				userData[userID].IDOper = num
 				userStates[userID] = "awaiting_idgrupo"
-				sendReply(server, message, "🏷️ Digite o número do grupo\n1- Autosky\n2- Consinco\n3- Econect\n4- Email\n5- Hardware\n6- Intranet\n7- Rede\n8- Software\n9- Telefonia\n10- Teste TI\n11- TOTVS\n12- Winthor12\n")
+				if userData[userID].IDOper == 1 {
+					sendReply(server, message, "🏷️ Digite o número do grupo\n1- Software\n2- Hardware\n4- Winthor\n5- Intranet\n7- Rede\n8- Email\n9- TOTVS\n10- Teste TI\n11- Consinco\n12- Autosky\n")
+				} else {
+					sendReply(server, message, "🏷️ Digite o número do grupo\n1- Software\n2- Hardware\n3- Telefonia\n4- Winthor\n5- Intranet\n6- Econect\n7- Rede\n12- Autosky\n")
+				}
 
 			case "awaiting_idgrupo":
 				num, err := strconv.Atoi(text)
@@ -450,8 +451,17 @@ func HelpdeskHandling(w http.ResponseWriter, r *http.Request) {
 					stateMutex.Unlock()
 					break
 				} else if err != nil || num < 1 || num > 12 {
-					sendReply(server, message, "❌ Grupo inválido! Digite de 1 - 12")
+					sendReply(server, message, "❌ Grupo inválido! Não pode ser inferior a 1 ou superior a 12")
 					return
+
+				} else if userData[userID].IDOper == 2 && num == 8 || userData[userID].IDOper == 2 && num == 9 || userData[userID].IDOper == 2 && num == 10 || userData[userID].IDOper == 2 && num == 11 {
+					sendReply(server, message, "❌ Grupo inválido! Digite de novamente.")
+					return
+
+				} else if userData[userID].IDOper == 1 && num == 3 || userData[userID].IDOper == 1 && num == 6 {
+					sendReply(server, message, "❌ Grupo inválido! Digite de novamente.")
+					return
+
 				}
 				userData[userID].IDGrupo = num
 				userStates[userID] = "awaiting_idsubgrupo"
